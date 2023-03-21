@@ -46,7 +46,7 @@ func sum(num int, fileName string) int {
 				numChan <- num
 			}
 			sumWorker(numChan, sumChan)
-		}(nums[i*partCount : partCount])
+		}(nums[i*partCount : (i+1)*partCount])
 	}
 
 	sum := 0
