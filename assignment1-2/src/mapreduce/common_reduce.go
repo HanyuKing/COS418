@@ -1,5 +1,12 @@
 package mapreduce
 
+import (
+	"encoding/json"
+	"io/ioutil"
+	"os"
+	"sort"
+)
+
 // doReduce does the job of a reduce worker: it reads the intermediate
 // key/value pairs (produced by the map phase) for this task, sorts the
 // intermediate key/value pairs by key, calls the user-defined reduce function
@@ -33,4 +40,56 @@ func doReduce(
 	// file.Close()
 	//
 	// Use checkError to handle errors.
+	totalKVMap := make(map[string][]string)
+	for i := 0; i < nMap; i++ {
+		mapFileName := reduceName(jobName, i, reduceTaskNumber)
+		bytesData, err := ioutil.ReadFile(mapFileName)
+
+		checkError(err)
+
+		var kvs []KeyValue
+		json.Unmarshal(bytesData, &kvs)
+
+		debug("doReduce phase. mapFileName: %s, len(kv): %d", mapFileName, len(kvs))
+
+		combinedData := combine(kvs)
+
+		for key, values := range combinedData {
+			if _, ok := totalKVMap[key]; ok {
+				totalKVMap[key] = append(totalKVMap[key], values...)
+			} else {
+				totalKVMap[key] = values
+			}
+		}
+	}
+
+	// sort by key
+	var keys []string
+	for k := range totalKVMap {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// write to a file
+	mergeFileName := mergeName(jobName, reduceTaskNumber)
+	file, err := os.Create(mergeFileName)
+	checkError(err)
+	encoder := json.NewEncoder(file)
+
+	for _, key := range keys {
+		encoder.Encode(KeyValue{
+			Key:   key,
+			Value: reduceF(key, totalKVMap[key]),
+		})
+	}
+
+	file.Close()
+}
+
+func combine(kvs []KeyValue) map[string][]string {
+	data := make(map[string][]string)
+	for _, kv := range kvs {
+		data[kv.Key] = append(data[kv.Key], kv.Value)
+	}
+	return data
 }

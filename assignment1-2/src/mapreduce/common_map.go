@@ -1,7 +1,9 @@
 package mapreduce
 
 import (
+	"encoding/json"
 	"hash/fnv"
+	"io/ioutil"
 )
 
 // doMap does the job of a map worker: it reads one of the input files
@@ -41,6 +43,25 @@ func doMap(
 	//
 	// Remember to close the file after you have written all the values!
 	// Use checkError to handle errors.
+
+	bytesData, err := ioutil.ReadFile(inFile)
+	checkError(err)
+
+	kvs := mapF(inFile, string(bytesData))
+
+	partitions := make([][]KeyValue, nReduce)
+
+	for _, kv := range kvs {
+		partition := int(ihash(kv.Key)) % nReduce
+		partitions[partition] = append(partitions[partition], kv)
+	}
+
+	for i, p := range partitions {
+		outputFileName := reduceName(jobName, mapTaskNumber, i)
+		jsonData, _ := json.Marshal(p)
+		ioutil.WriteFile(outputFileName, jsonData, 777)
+	}
+
 }
 
 func ihash(s string) uint32 {
