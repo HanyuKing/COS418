@@ -25,7 +25,7 @@ type Simulator struct {
 	logger         *Logger
 	// TODO: ADD MORE FIELDS HERE
 	allServerSnapCompleted chan struct{}
-	snapCompletedServers   map[int]map[string]struct{}
+	snapCompletedServers   map[int][]string
 	snapshotMessages       map[int][]*SnapshotMessage
 }
 
@@ -36,7 +36,7 @@ func NewSimulator() *Simulator {
 		make(map[string]*Server),
 		NewLogger(),
 		make(chan struct{}),
-		make(map[int]map[string]struct{}),
+		make(map[int][]string),
 		make(map[int][]*SnapshotMessage),
 	}
 }
@@ -131,13 +131,16 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 	sim.logger.RecordEvent(sim.servers[serverId], EndSnapshot{serverId, snapshotId})
 	// TODO: IMPLEMENT ME
 
-	if sim.snapCompletedServers[snapshotId] == nil {
-		sim.snapCompletedServers[snapshotId] = make(map[string]struct{})
-	}
+	sim.snapCompletedServers[snapshotId] = append(sim.snapCompletedServers[snapshotId], serverId)
 
-	sim.snapCompletedServers[snapshotId][serverId] = struct{}{}
+	// sim.logger.PrettyPrint()
+	//if debug {
+	//	fmt.Printf("NotifySnapshotComplete. snapshotId: %d, serverId: %s\n", snapshotId, serverId)
+	//}
 
-	if len(sim.snapCompletedServers[snapshotId]) == len(sim.servers) {
+	markerMessageCount := len(sim.servers[sim.snapCompletedServers[snapshotId][0]].outboundLinks) + 1
+
+	if len(sim.snapCompletedServers[snapshotId]) == markerMessageCount {
 		// arrived server message(not snapshot)
 		for _, serverId := range getSortedKeys(sim.servers) {
 			server := sim.servers[serverId]
@@ -184,7 +187,7 @@ func (sim *Simulator) snapMessageBeforeSend(snapshotId int, server1 string, serv
 	index := 0
 	index1 := index
 	index2 := index
-	for serverId, _ := range sim.snapCompletedServers[snapshotId] {
+	for _, serverId := range sim.snapCompletedServers[snapshotId] {
 		if serverId == server1 {
 			index1 = index
 			index += 1
