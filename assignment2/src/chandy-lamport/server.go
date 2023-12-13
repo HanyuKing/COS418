@@ -16,7 +16,7 @@ type Server struct {
 	outboundLinks map[string]*Link // key = link.dest
 	inboundLinks  map[string]*Link // key = link.src
 	// TODO: ADD MORE FIELDS HERE
-	markerMessages       map[int]*SnapshotMessage
+	markerMessages       map[int]struct{}
 	tempSnapshotMessages []*SnapshotMessage
 	snapshotTokens       map[int]int
 }
@@ -36,7 +36,7 @@ func NewServer(id string, tokens int, sim *Simulator) *Server {
 		sim,
 		make(map[string]*Link),
 		make(map[string]*Link),
-		make(map[int]*SnapshotMessage),
+		make(map[int]struct{}),
 		make([]*SnapshotMessage, 0),
 		make(map[int]int),
 	}
@@ -70,6 +70,9 @@ func (server *Server) SendToNeighbors(message interface{}) {
 // Send a number of tokens to a neighbor attached to this server
 func (server *Server) SendTokens(numTokens int, dest string) {
 	if server.Tokens < numTokens {
+		//
+		//server.sim.logger.PrettyPrint()
+
 		log.Fatalf("Server %v attempted to send %v tokens when it only has %v\n",
 			server.Id, numTokens, server.Tokens)
 	}
@@ -107,6 +110,7 @@ func (server *Server) HandlePacket(src string, message interface{}) {
 		if _, ok := server.markerMessages[snapshotId]; ok {
 			return
 		}
+		server.markerMessages[snapshotId] = struct{}{}
 
 		server.StartSnapshot(snapshotId)
 
