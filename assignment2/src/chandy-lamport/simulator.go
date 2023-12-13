@@ -149,6 +149,7 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 		for _, serverId := range getSortedKeys(sim.servers) {
 			server := sim.servers[serverId]
 			for _, dest := range getSortedKeys(server.outboundLinks) {
+
 				link := server.outboundLinks[dest]
 				if !link.events.Empty() {
 					node := link.events.elements.Front()
@@ -156,6 +157,10 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 						evt := node.Value.(SendMessageEvent)
 						switch msg := evt.message.(type) {
 						case TokenMessage:
+							if sim.snapMessageBeforeSend(snapshotId, evt.src, evt.dest) {
+								break
+							}
+
 							sim.snapshotMessages[snapshotId] = append(sim.snapshotMessages[snapshotId], &SnapshotMessage{
 								src:     evt.src,
 								dest:    evt.dest,
@@ -173,6 +178,23 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 		sim.snapCompletedServers[snapshotId] = nil
 		sim.allServerSnapCompleted <- struct{}{}
 	}
+}
+
+func (sim *Simulator) snapMessageBeforeSend(snapshotId int, server1 string, server2 string) bool {
+	index := 0
+	index1 := index
+	index2 := index
+	for serverId, _ := range sim.snapCompletedServers[snapshotId] {
+		if serverId == server1 {
+			index1 = index
+			index += 1
+		}
+		if serverId == server2 {
+			index2 = index
+			index += 1
+		}
+	}
+	return index1 < index2
 }
 
 // Collect and merge snapshot state from all the servers.
