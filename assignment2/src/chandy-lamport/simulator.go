@@ -24,9 +24,10 @@ type Simulator struct {
 	servers        map[string]*Server // key = server ID
 	logger         *Logger
 	// TODO: ADD MORE FIELDS HERE
-	allServerSnapCompleted chan struct{}
-	snapCompletedServers   map[int][]string
-	snapshotMessages       map[int][]*SnapshotMessage
+	allServerSnapCompleted  chan struct{}
+	snapCompletedServerSeqs map[int][]string
+	snapCompletedServers    map[int]map[string]struct{}
+	snapshotMessages        map[int][]*SnapshotMessage
 }
 
 func NewSimulator() *Simulator {
@@ -37,6 +38,7 @@ func NewSimulator() *Simulator {
 		NewLogger(),
 		make(chan struct{}),
 		make(map[int][]string),
+		make(map[int]map[string]struct{}),
 		make(map[int][]*SnapshotMessage),
 	}
 }
@@ -131,16 +133,23 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 	sim.logger.RecordEvent(sim.servers[serverId], EndSnapshot{serverId, snapshotId})
 	// TODO: IMPLEMENT ME
 
-	sim.snapCompletedServers[snapshotId] = append(sim.snapCompletedServers[snapshotId], serverId)
+	if sim.snapCompletedServers[snapshotId] == nil {
+		sim.snapCompletedServers[snapshotId] = make(map[string]struct{})
+	}
+
+	if _, ok := sim.snapCompletedServers[snapshotId][serverId]; ok {
+		return
+	}
+
+	sim.snapCompletedServers[snapshotId][serverId] = struct{}{}
+	sim.snapCompletedServerSeqs[snapshotId] = append(sim.snapCompletedServerSeqs[snapshotId], serverId)
 
 	// sim.logger.PrettyPrint()
 	//if debug {
 	//	fmt.Printf("NotifySnapshotComplete. snapshotId: %d, serverId: %s\n", snapshotId, serverId)
 	//}
 
-	markerMessageCount := len(sim.servers[sim.snapCompletedServers[snapshotId][0]].outboundLinks) + 1
-
-	if len(sim.snapCompletedServers[snapshotId]) == markerMessageCount {
+	if len(sim.snapCompletedServerSeqs[snapshotId]) == len(sim.servers) {
 		// arrived server message(not snapshot)
 		for _, serverId := range getSortedKeys(sim.servers) {
 			server := sim.servers[serverId]
@@ -178,26 +187,9 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 			}
 		}
 
-		sim.snapCompletedServers[snapshotId] = nil
+		sim.snapCompletedServerSeqs[snapshotId] = nil
 		sim.allServerSnapCompleted <- struct{}{}
 	}
-}
-
-func (sim *Simulator) snapMessageBeforeSend(snapshotId int, server1 string, server2 string) bool {
-	index := 0
-	index1 := index
-	index2 := index
-	for _, serverId := range sim.snapCompletedServers[snapshotId] {
-		if serverId == server1 {
-			index1 = index
-			index += 1
-		}
-		if serverId == server2 {
-			index2 = index
-			index += 1
-		}
-	}
-	return index1 < index2
 }
 
 // Collect and merge snapshot state from all the servers.
@@ -218,4 +210,21 @@ func (sim *Simulator) CollectSnapshot(snapshotId int) *SnapshotState {
 		snap.messages = append(snap.messages, msg...)
 	}
 	return &snap
+}
+
+func (sim *Simulator) snapMessageBeforeSend(snapshotId int, server1 string, server2 string) bool {
+	index := 0
+	index1 := index
+	index2 := index
+	for _, serverId := range sim.snapCompletedServerSeqs[snapshotId] {
+		if serverId == server1 {
+			index1 = index
+			index += 1
+		}
+		if serverId == server2 {
+			index2 = index
+			index += 1
+		}
+	}
+	return index1 < index2
 }

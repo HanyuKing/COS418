@@ -109,6 +109,9 @@ func (server *Server) HandlePacket(src string, message interface{}) {
 		}
 
 		server.StartSnapshot(snapshotId)
+
+		server.SendToNeighbors(message)
+
 		server.sim.NotifySnapshotComplete(server.Id, snapshotId)
 	}
 
