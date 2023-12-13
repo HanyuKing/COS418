@@ -16,7 +16,7 @@ type Server struct {
 	outboundLinks map[string]*Link // key = link.dest
 	inboundLinks  map[string]*Link // key = link.src
 	// TODO: ADD MORE FIELDS HERE
-	markerMessages       map[int]struct{}
+	// markerMessages       map[int]struct{}
 	tempSnapshotMessages []*SnapshotMessage
 	snapshotTokens       map[int]int
 }
@@ -36,7 +36,7 @@ func NewServer(id string, tokens int, sim *Simulator) *Server {
 		sim,
 		make(map[string]*Link),
 		make(map[string]*Link),
-		make(map[int]struct{}),
+		// make(map[int]struct{}),
 		make([]*SnapshotMessage, 0),
 		make(map[int]int),
 	}
@@ -107,10 +107,9 @@ func (server *Server) HandlePacket(src string, message interface{}) {
 	case MarkerMessage:
 		snapshotId := msg.snapshotId
 
-		if _, ok := server.markerMessages[snapshotId]; ok {
+		if _, ok := server.snapshotTokens[snapshotId]; ok {
 			return
 		}
-		server.markerMessages[snapshotId] = struct{}{}
 
 		server.StartSnapshot(snapshotId)
 
@@ -127,9 +126,6 @@ func (server *Server) StartSnapshot(snapshotId int) {
 	// TODO: IMPLEMENT ME
 	server.sim.logger.RecordEvent(server, StartSnapshot{server.Id, snapshotId})
 
-	if _, ok := server.snapshotTokens[snapshotId]; ok {
-		return
-	}
 	server.snapshotTokens[snapshotId] = server.Tokens
 	server.tempSnapshotMessages = nil
 
