@@ -154,6 +154,11 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 		for _, serverId := range getSortedKeys(sim.servers) {
 			server := sim.servers[serverId]
 			for _, msg := range server.tempSnapshotMessages {
+
+				if sim.snapMessageBeforeSend(snapshotId, msg.src, msg.dest) {
+					continue
+				}
+
 				sim.snapshotMessages[snapshotId] = append(sim.snapshotMessages[snapshotId], msg)
 			}
 		}
@@ -196,7 +201,6 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 // This function blocks until the snapshot process has completed on all servers.
 func (sim *Simulator) CollectSnapshot(snapshotId int) *SnapshotState {
 	// TODO: IMPLEMENT ME
-
 	<-sim.allServerSnapCompleted
 
 	snap := SnapshotState{snapshotId, make(map[string]int), make([]*SnapshotMessage, 0)}
@@ -206,9 +210,8 @@ func (sim *Simulator) CollectSnapshot(snapshotId int) *SnapshotState {
 		snap.tokens[server.Id] = server.snapshotTokens[snapshotId]
 	}
 
-	for _, msg := range sim.snapshotMessages {
-		snap.messages = append(snap.messages, msg...)
-	}
+	snap.messages = append(snap.messages, sim.snapshotMessages[snapshotId]...)
+
 	return &snap
 }
 
