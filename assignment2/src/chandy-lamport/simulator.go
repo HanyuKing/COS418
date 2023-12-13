@@ -26,6 +26,7 @@ type Simulator struct {
 	// TODO: ADD MORE FIELDS HERE
 	allServerSnapCompleted chan struct{}
 	snapCompletedServers   map[int]map[string]struct{}
+	snapshotMessages       map[int][]*SnapshotMessage
 }
 
 func NewSimulator() *Simulator {
@@ -36,6 +37,7 @@ func NewSimulator() *Simulator {
 		NewLogger(),
 		make(chan struct{}),
 		make(map[int]map[string]struct{}),
+		make(map[int][]*SnapshotMessage),
 	}
 }
 
@@ -136,6 +138,38 @@ func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 	sim.snapCompletedServers[snapshotId][serverId] = struct{}{}
 
 	if len(sim.snapCompletedServers[snapshotId]) == len(sim.servers) {
+		// arrived server message(not snapshot)
+		for _, serverId := range getSortedKeys(sim.servers) {
+			server := sim.servers[serverId]
+			for _, msg := range server.tempSnapshotMessages {
+				sim.snapshotMessages[snapshotId] = append(sim.snapshotMessages[snapshotId], msg)
+			}
+		}
+		// in channel message
+		for _, serverId := range getSortedKeys(sim.servers) {
+			server := sim.servers[serverId]
+			for _, dest := range getSortedKeys(server.outboundLinks) {
+				link := server.outboundLinks[dest]
+				if !link.events.Empty() {
+					node := link.events.elements.Front()
+					for node != nil {
+						evt := node.Value.(SendMessageEvent)
+						switch msg := evt.message.(type) {
+						case TokenMessage:
+							sim.snapshotMessages[snapshotId] = append(sim.snapshotMessages[snapshotId], &SnapshotMessage{
+								src:     evt.src,
+								dest:    evt.dest,
+								message: msg,
+							})
+						case MarkerMessage:
+
+						}
+						node = node.Next()
+					}
+				}
+			}
+		}
+
 		sim.snapCompletedServers[snapshotId] = nil
 		sim.allServerSnapCompleted <- struct{}{}
 	}
@@ -153,36 +187,10 @@ func (sim *Simulator) CollectSnapshot(snapshotId int) *SnapshotState {
 	for _, serverId := range getSortedKeys(sim.servers) {
 		server := sim.servers[serverId]
 		snap.tokens[server.Id] = server.snapshotTokens[snapshotId]
-
-		for _, msg := range server.tempSnapshotMessages {
-			snap.messages = append(snap.messages, msg)
-		}
-
-		//for _, dest := range getSortedKeys(server.outboundLinks) {
-		//	link := server.outboundLinks[dest]
-		//	if !link.events.Empty() {
-		//		node := link.events.elements.Front()
-		//		for node != nil {
-		//			evt := node.Value.(SendMessageEvent)
-		//			switch msg := evt.message.(type) {
-		//			case TokenMessage:
-		//				snap.messages = append(snap.messages,&SnapshotMessage{
-		//					src:     evt.src,
-		//					dest:    evt.dest,
-		//					message: msg,
-		//				} )
-		//			case MarkerMessage:
-		//
-		//			}
-		//			node = node.Next()
-		//		}
-		//	}
-		//}
-		//
-		////if server.tempSnapshotMessages[snapshotId] != nil {
-		////	snap.messages = append(snap.messages, server.tempSnapshotMessages[snapshotId])
-		////}
 	}
 
+	for _, msg := range sim.snapshotMessages {
+		snap.messages = append(snap.messages, msg...)
+	}
 	return &snap
 }
