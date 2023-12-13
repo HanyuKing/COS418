@@ -1,6 +1,8 @@
 package chandy_lamport
 
-import "log"
+import (
+	"log"
+)
 
 // The main participant of the distributed snapshot protocol.
 // Servers exchange token messages and marker messages among each other.
@@ -14,6 +16,9 @@ type Server struct {
 	outboundLinks map[string]*Link // key = link.dest
 	inboundLinks  map[string]*Link // key = link.src
 	// TODO: ADD MORE FIELDS HERE
+	markerMessages       map[int]*SnapshotMessage
+	tempSnapshotMessages []*SnapshotMessage
+	snapshotTokens       map[int]int
 }
 
 // A unidirectional communication channel between two servers
@@ -31,6 +36,9 @@ func NewServer(id string, tokens int, sim *Simulator) *Server {
 		sim,
 		make(map[string]*Link),
 		make(map[string]*Link),
+		make(map[int]*SnapshotMessage),
+		make([]*SnapshotMessage, 0),
+		make(map[int]int),
 	}
 }
 
@@ -85,10 +93,37 @@ func (server *Server) SendTokens(numTokens int, dest string) {
 // should notify the simulator by calling `sim.NotifySnapshotComplete`.
 func (server *Server) HandlePacket(src string, message interface{}) {
 	// TODO: IMPLEMENT ME
+	switch msg := message.(type) {
+	case TokenMessage:
+		server.Tokens += msg.numTokens
+		server.tempSnapshotMessages = append(server.tempSnapshotMessages, &SnapshotMessage{
+			src:     src,
+			dest:    server.Id,
+			message: message,
+		})
+	case MarkerMessage:
+		snapshotId := msg.snapshotId
+
+		if _, ok := server.markerMessages[snapshotId]; ok {
+			return
+		}
+
+		server.StartSnapshot(snapshotId)
+		server.sim.NotifySnapshotComplete(server.Id, snapshotId)
+	}
+
 }
 
 // Start the chandy-lamport snapshot algorithm on this server.
 // This should be called only once per server.
 func (server *Server) StartSnapshot(snapshotId int) {
 	// TODO: IMPLEMENT ME
+	server.sim.logger.RecordEvent(server, StartSnapshot{server.Id, snapshotId})
+
+	if _, ok := server.snapshotTokens[snapshotId]; ok {
+		return
+	}
+	server.snapshotTokens[snapshotId] = server.Tokens
+	server.tempSnapshotMessages = nil
+
 }

@@ -7,7 +7,7 @@ import (
 	"sort"
 )
 
-const debug = false
+const debug = true
 
 // ====================================
 //  Messages exchanged between servers
@@ -86,7 +86,7 @@ func (m SentMessageEvent) String() string {
 // A message that signifies the beginning of the snapshot process on a particular server.
 // This is used only for debugging that is not sent between servers.
 type StartSnapshot struct {
-	serverId string
+	serverId   string
 	snapshotId int
 }
 
@@ -97,7 +97,7 @@ func (m StartSnapshot) String() string {
 // A message that signifies the end of the snapshot process on a particular server.
 // This is used only for debugging that is not sent between servers.
 type EndSnapshot struct {
-	serverId string
+	serverId   string
 	snapshotId int
 }
 

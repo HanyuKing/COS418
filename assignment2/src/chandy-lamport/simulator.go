@@ -24,6 +24,8 @@ type Simulator struct {
 	servers        map[string]*Server // key = server ID
 	logger         *Logger
 	// TODO: ADD MORE FIELDS HERE
+	allServerSnapCompleted chan struct{}
+	snapCompletedServers   map[int]map[string]struct{}
 }
 
 func NewSimulator() *Simulator {
@@ -32,6 +34,8 @@ func NewSimulator() *Simulator {
 		0,
 		make(map[string]*Server),
 		NewLogger(),
+		make(chan struct{}),
+		make(map[int]map[string]struct{}),
 	}
 }
 
@@ -106,8 +110,17 @@ func (sim *Simulator) Tick() {
 func (sim *Simulator) StartSnapshot(serverId string) {
 	snapshotId := sim.nextSnapshotId
 	sim.nextSnapshotId++
-	sim.logger.RecordEvent(sim.servers[serverId], StartSnapshot{serverId, snapshotId})
+	// sim.logger.RecordEvent(sim.servers[serverId], StartSnapshot{serverId, snapshotId})
 	// TODO: IMPLEMENT ME
+
+	// 1. current server start snapshot
+	server := sim.servers[serverId]
+	server.StartSnapshot(snapshotId)
+	server.sim.NotifySnapshotComplete(serverId, snapshotId)
+
+	// 2. when snapshot completed, send a marker message to others
+	markerMessage := MarkerMessage{snapshotId}
+	server.SendToNeighbors(markerMessage)
 }
 
 // Callback for servers to notify the simulator that the snapshot process has
@@ -115,12 +128,61 @@ func (sim *Simulator) StartSnapshot(serverId string) {
 func (sim *Simulator) NotifySnapshotComplete(serverId string, snapshotId int) {
 	sim.logger.RecordEvent(sim.servers[serverId], EndSnapshot{serverId, snapshotId})
 	// TODO: IMPLEMENT ME
+
+	if sim.snapCompletedServers[snapshotId] == nil {
+		sim.snapCompletedServers[snapshotId] = make(map[string]struct{})
+	}
+
+	sim.snapCompletedServers[snapshotId][serverId] = struct{}{}
+
+	if len(sim.snapCompletedServers[snapshotId]) == len(sim.servers) {
+		sim.snapCompletedServers[snapshotId] = nil
+		sim.allServerSnapCompleted <- struct{}{}
+	}
 }
 
 // Collect and merge snapshot state from all the servers.
 // This function blocks until the snapshot process has completed on all servers.
 func (sim *Simulator) CollectSnapshot(snapshotId int) *SnapshotState {
 	// TODO: IMPLEMENT ME
+
+	<-sim.allServerSnapCompleted
+
 	snap := SnapshotState{snapshotId, make(map[string]int), make([]*SnapshotMessage, 0)}
+
+	for _, serverId := range getSortedKeys(sim.servers) {
+		server := sim.servers[serverId]
+		snap.tokens[server.Id] = server.snapshotTokens[snapshotId]
+
+		for _, msg := range server.tempSnapshotMessages {
+			snap.messages = append(snap.messages, msg)
+		}
+
+		//for _, dest := range getSortedKeys(server.outboundLinks) {
+		//	link := server.outboundLinks[dest]
+		//	if !link.events.Empty() {
+		//		node := link.events.elements.Front()
+		//		for node != nil {
+		//			evt := node.Value.(SendMessageEvent)
+		//			switch msg := evt.message.(type) {
+		//			case TokenMessage:
+		//				snap.messages = append(snap.messages,&SnapshotMessage{
+		//					src:     evt.src,
+		//					dest:    evt.dest,
+		//					message: msg,
+		//				} )
+		//			case MarkerMessage:
+		//
+		//			}
+		//			node = node.Next()
+		//		}
+		//	}
+		//}
+		//
+		////if server.tempSnapshotMessages[snapshotId] != nil {
+		////	snap.messages = append(snap.messages, server.tempSnapshotMessages[snapshotId])
+		////}
+	}
+
 	return &snap
 }
